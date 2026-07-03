@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explore — Scent Mission Wall</title>
+<meta name="description" content="20개의 향 웰을 직접 다뤄보고, 3D로 돌려보고, 구조를 분해해 봅니다.">
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>
+  :root{
+    --bg:#ffffff;--ink:#050505;--mute:#5c5c5c;--faint:#b8b8b8;--line:#e2e2df;
+    --ease:cubic-bezier(.16,1,.3,1);--easeslow:cubic-bezier(.19,1,.22,1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden}
+  .mono{font-family:"SF Mono",ui-monospace,"Cascadia Code","Consolas",monospace}
+  ::selection{background:var(--ink);color:#fff}
+
+  #field{position:fixed;inset:0;z-index:0;pointer-events:none}
+  #curtain{position:fixed;inset:0;z-index:9999;background:#050505;pointer-events:none;opacity:1;transition:opacity .7s var(--ease)}
+  #curtain.gone{opacity:0}
+  #curtain.leaving{opacity:1;pointer-events:auto}
+
+  .reveal{opacity:0;transform:translateY(40px);transition:opacity 1.1s var(--easeslow),transform 1.1s var(--easeslow)}
+  .reveal.in{opacity:1;transform:none}
+
+  nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+    padding:22px 42px;mix-blend-mode:difference;color:#fff}
+  nav a{color:#fff;text-decoration:none}
+  nav .brand{font-weight:600;letter-spacing:.02em;font-size:15px}
+  nav .brand small{opacity:.5;font-weight:400;font-size:11px;letter-spacing:.12em;margin-left:8px}
+  nav .navlinks{display:flex;gap:26px;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  nav .navlinks a{opacity:.7;transition:opacity .3s}
+  nav .navlinks a:hover,nav .navlinks a.on{opacity:1}
+
+  section{position:relative;z-index:1}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 42px}
+  .sec-eyebrow{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--mute);margin-bottom:16px}
+
+  /* ============ INSTRUMENT ============ */
+  .instrument{min-height:100vh;padding:120px 0 90px;display:flex;align-items:center}
+  .inst-grid{display:grid;grid-template-columns:1.28fr .72fr;gap:56px;align-items:center;width:100%}
+
+  .stage{position:relative;width:100%;border-radius:22px;overflow:hidden;
+    background:radial-gradient(ellipse 82% 82% at 50% 42%,#fbfbfa,#ececea);border:1px solid var(--line);
+    box-shadow:0 40px 90px rgba(0,0,0,.08);touch-action:none}
+  .stage img.base{width:100%;display:block;mix-blend-mode:multiply;user-select:none;-webkit-user-drag:none;pointer-events:none}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+  .hot{position:absolute;transform:translate(-50%,-50%);width:12%;aspect-ratio:1;border-radius:26%;
+    z-index:3;cursor:pointer;background:transparent;border:0;padding:0}
+  .hot .ring{position:absolute;inset:0;border-radius:26%;border:1.5px solid rgba(5,5,5,0);
+    transition:border-color .3s var(--ease),transform .35s var(--ease),box-shadow .35s var(--ease);transform:scale(.9)}
+  .hot:hover .ring,.hot:focus-visible .ring{border-color:rgba(5,5,5,.55);transform:scale(1)}
+  .hot.armed .ring{border-color:var(--ink);transform:scale(1);box-shadow:0 0 0 4px rgba(5,5,5,.08)}
+  .hot .lbl{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:10px;letter-spacing:.1em;
+    color:var(--ink);opacity:0;transition:opacity .3s}
+  .hot:hover .lbl,.hot.armed .lbl{opacity:.9}
+  .stage .hint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:4;font-size:10px;letter-spacing:.2em;
+    color:var(--mute);background:rgba(255,255,255,.78);padding:7px 16px;border-radius:100px;border:1px solid var(--line);
+    backdrop-filter:blur(6px);white-space:nowrap;transition:opacity .5s;pointer-events:none}
+
+  .inst-copy h1{font-size:clamp(30px,4.2vw,52px);font-weight:600;letter-spacing:-.03em;line-height:1.04;margin-bottom:18px}
+  .inst-copy>p{color:var(--mute);font-size:16px;max-width:340px;margin-bottom:34px;line-height:1.7}
+
+  .readout{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:rgba(255,255,255,.5);backdrop-filter:blur(8px)}
+  .ro-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .ro-head .rec{font-size:10px;letter-spacing:.22em;color:var(--mute);display:flex;align-items:center;gap:8px}
+  .ro-head .rec::before{content:"";width:8px;height:8px;border-radius:50%;background:#050505;animation:blink 1.4s steps(1) infinite}
+  @keyframes blink{50%{opacity:.2}}
+  .ro-head .pad{font-size:22px;font-weight:600;letter-spacing:.02em}
+  .ro-body{padding:18px 20px 22px}
+  .metric{margin-bottom:16px}
+  .metric:last-child{margin-bottom:0}
+  .metric .k{font-size:10px;letter-spacing:.18em;color:var(--mute);margin-bottom:7px;display:flex;justify-content:space-between}
+  .metric .k b{color:var(--ink);font-weight:600}
+  .bar{height:3px;background:rgba(5,5,5,.1);border-radius:2px;overflow:hidden}
+  .bar span{display:block;height:100%;width:12%;background:var(--ink);border-radius:2px;transition:width .5s var(--ease)}
+  .armed-line{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;letter-spacing:.04em;color:var(--mute)}
+  .armed-line b{color:var(--ink)}
+
+  /* ============ TURNTABLE (3D) ============ */
+  .turntable{padding:120px 0}
+  .tt-grid{display:grid;grid-template-columns:.82fr 1.18fr;gap:56px;align-items:center}
+  .tt-copy h2{font-size:clamp(28px,3.8vw,46px);font-weight:600;letter-spacing:-.03em;line-height:1.06;margin-bottom:16px}
+  .tt-copy>p{color:var(--mute);font-size:16px;max-width:320px;margin-bottom:30px}
+  .tt-list{display:flex;flex-direction:column}
+  .tt-list .row{display:flex;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+  .tt-list .row:last-child{border-bottom:1px solid var(--line)}
+  .tt-list .n{font-size:11px;font-weight:600;color:var(--faint);min-width:22px;padding-top:3px}
+  .tt-list h3{font-size:16px;font-weight:600;margin-bottom:3px}
+  .tt-list p{font-size:13px;color:var(--mute)}
+  .tt-stage{position:relative;aspect-ratio:4/3;border-radius:22px;overflow:hidden;border:1px solid var(--line);
+    background:radial-gradient(ellipse 70% 70% at 50% 40%,#fbfbfa,#eeeeeb)}
+  .tt-stage model-viewer{width:100%;height:100%;background:transparent;--poster-color:transparent}
+  .tt-stage .poster{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .tt-stage .poster img{width:76%;mix-blend-mode:multiply}
+  .tt-stage .drag{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.18em;
+    color:var(--mute);background:rgba(255,255,255,.8);padding:7px 16px;border-radius:100px;border:1px solid var(--line);
+    backdrop-filter:blur(6px);pointer-events:none}
+
+  /* ============ STRUCTURE ============ */
+  .structure{padding:120px 0 130px;text-align:center}
+  .structure h2{font-size:clamp(28px,4vw,50px);font-weight:600;letter-spacing:-.03em;margin-bottom:14px}
+  .structure .sub{color:var(--mute);font-size:16px;max-width:440px;margin:0 auto 44px}
+  .exploded{position:relative;width:min(78%,720px);margin:0 auto}
+  .exploded img{width:100%;display:block;mix-blend-mode:multiply;filter:drop-shadow(0 40px 60px rgba(0,0,0,.1))}
+  .callout{position:absolute;text-align:left;z-index:3}
+  .callout .dot{width:9px;height:9px;border-radius:50%;background:var(--ink);position:absolute;left:0;top:6px}
+  .callout .txt{padding-left:22px}
+  .callout .n{font-size:11px;letter-spacing:.2em;color:var(--faint);margin-bottom:3px}
+  .callout h4{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .callout p{font-size:12px;color:var(--mute);max-width:150px}
+  .c1{left:-6%;top:16%}.c2{left:-6%;top:44%}.c3{right:-6%;top:70%;text-align:right}
+  .c3 .dot{left:auto;right:0}.c3 .txt{padding-left:0;padding-right:22px}
+
+  /* ============ CTA ============ */
+  .cta{background:#050505;color:#fff;text-align:center;padding:130px 24px;border-radius:34px 34px 0 0;position:relative;overflow:hidden}
+  .cta::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.12) 1px,transparent 1px);
+    background-size:30px 30px;opacity:.4;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 50%,#000 20%,transparent 70%);
+    mask-image:radial-gradient(ellipse 70% 60% at 50% 50%,#000 20%,transparent 70%)}
+  .cta .inner{position:relative;z-index:2}
+  .cta h2{font-size:clamp(30px,4.6vw,58px);font-weight:600;letter-spacing:-.03em;line-height:1.06;margin-bottom:18px}
+  .cta p{color:#b8b8b8;font-size:17px;margin-bottom:40px}
+  .enter{display:inline-flex;align-items:center;gap:16px;background:#fff;color:#000;text-decoration:none;
+    font-size:15px;font-weight:600;padding:18px 20px 18px 34px;border-radius:100px;cursor:pointer;border:none;font-family:inherit;
+    transition:transform .4s var(--ease),box-shadow .4s var(--ease)}
+  .enter:hover{transform:translateY(-3px);box-shadow:0 20px 50px rgba(255,255,255,.16)}
+  .enter .circ{width:38px;height:38px;border-radius:50%;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .4s var(--ease)}
+  .enter:hover .circ{transform:translateX(4px)}
+
+  footer{background:#050505;color:#5a5a5a;font-size:11px;letter-spacing:.08em;text-align:center;padding:40px;position:relative;z-index:1}
+
+  @media(max-width:860px){
+    nav{padding:18px 22px}.wrap{padding:0 22px}
+    .inst-grid,.tt-grid{grid-template-columns:1fr;gap:34px}
+    .tt-stage{order:-1}
+    .exploded{width:74%}
+    .callout p{display:none}
+    .c1,.c2{left:-2%}.c3{right:-2%}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<canvas id="field"></canvas>
+<div id="curtain"></div>
+
+<nav>
+  <a href="index.html" class="brand" data-nav>Scent Mission Wall <small>SMW-01</small></a>
+  <div class="navlinks">
+    <a href="index.html" data-nav>제품</a>
+    <a href="#turntable">3D</a>
+    <a href="experience.html" data-nav>체험</a>
+  </div>
+</nav>
+
+<!-- ============ INSTRUMENT ============ -->
+<section class="instrument">
+  <div class="wrap inst-grid">
+    <div class="stage reveal" id="stage">
+      <img class="base" id="baseimg" src="assets/front-top.png" alt="향 패드 20구 상면 뷰">
+      <canvas id="plume"></canvas>
+      <div class="hint mono" id="hint">HOVER A PAD · CLICK TO ARM TARGET</div>
+      <!-- hotspots injected by JS -->
+    </div>
+    <div class="inst-copy">
+      <div class="sec-eyebrow reveal">Interactive · 20 Wells</div>
+      <h1 class="reveal">향은, 이렇게<br>피어오릅니다.</h1>
+      <p class="reveal">패드 위로 커서를 움직여 보세요. 사람은 볼 수 없는 향의 확산을, 탐색견이 읽는 그대로 시각화합니다.</p>
+      <div class="readout reveal">
+        <div class="ro-head">
+          <span class="rec mono">LIVE</span>
+          <span class="pad mono" id="roPad">— —</span>
+        </div>
+        <div class="ro-body">
+          <div class="metric">
+            <div class="k">SNIFF INTENSITY <b id="roV1">0%</b></div>
+            <div class="bar"><span id="roB1"></span></div>
+          </div>
+          <div class="metric">
+            <div class="k">DIFFUSION <b id="roV2">IDLE</b></div>
+            <div class="bar"><span id="roB2"></span></div>
+          </div>
+          <div class="armed-line mono">TARGET · <b id="roArmed">미설정</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TURNTABLE ============ -->
+<section class="turntable" id="turntable">
+  <div class="wrap tt-grid">
+    <div class="tt-copy">
+      <div class="sec-eyebrow reveal">360° · Real 3D</div>
+      <h2 class="reveal">직접<br>돌려보세요.</h2>
+      <p class="reveal">마우스로 드래그해 제품을 자유롭게 회전하며 구조를 확인할 수 있습니다.</p>
+      <div class="tt-list reveal">
+        <div class="row"><span class="n mono">01</span><div><h3>모듈형 향 패드</h3><p>향 위치를 바꿔가며 반복 훈련.</p></div></div>
+        <div class="row"><span class="n mono">02</span><div><h3>오브젝트 레이어</h3><p>가방·캐리어로 수하물 탐색 모사.</p></div></div>
+        <div class="row"><span class="n mono">03</span><div><h3>강아지 시점 설계</h3><p>낮은 시야·후각 반응 기준 구조.</p></div></div>
+      </div>
+    </div>
+    <div class="tt-stage reveal">
+      <model-viewer id="mv" src="assets/module.glb"
+        environment-image="neutral" tone-mapping="neutral"
+        camera-orbit="25deg 72deg 130%" camera-controls auto-rotate rotation-per-second="16deg"
+        interaction-prompt="none" shadow-intensity="1" exposure="1.15" disable-tap>
+        <div class="poster" slot="poster"><img src="assets/front-closed.png" alt="Scent Mission Wall"></div>
+      </model-viewer>
+      <div class="drag mono">DRAG TO ROTATE · SCROLL TO ZOOM</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STRUCTURE ============ -->
+<section class="structure">
+  <div class="wrap">
+    <div class="sec-eyebrow reveal" style="text-align:center">Layered Structure</div>
+    <h2 class="reveal">세 개의 레이어.</h2>
+    <p class="sub reveal">향 패드 · 트레이 · 향 캡슐이 겹쳐 하나의 탐색 미션월이 됩니다.</p>
+    <div class="exploded reveal">
+      <img src="assets/exploded.png" alt="Scent Mission Wall 분해 구조도">
+      <div class="callout c1"><span class="dot"></span><div class="txt"><div class="n mono">01</div><h4>향 패드</h4><p>중앙 웰로 향이 배어 나오는 직물 패드.</p></div></div>
+      <div class="callout c2"><span class="dot"></span><div class="txt"><div class="n mono">02</div><h4>트레이</h4><p>패드를 정렬하고 향을 가두는 중간층.</p></div></div>
+      <div class="callout c3"><span class="dot"></span><div class="txt"><div class="n mono">03</div><h4>향 캡슐</h4><p>교체형 캡슐로 목표 향을 지정.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="cta">
+  <div class="inner">
+    <h2 class="reveal">구조를 확인했다면,<br>이제 탐색견의 시점으로.</h2>
+    <p class="reveal">사람은 느낄 수 없는 향의 흐름을 직접 경험해보세요.</p>
+    <a href="experience.html" class="enter reveal" data-nav>체험하기 <span class="circ">→</span></a>
+  </div>
+</section>
+
+<footer class="mono">SCENT MISSION WALL · SMW-01 · SCENT DETECTION TRAINING PLATFORM</footer>
+
+<script>
+/* ============ background scent field (subtle) ============ */
+(function(){
+  const c=document.getElementById('field'),x=c.getContext('2d');
+  let w,h,dpr,parts=[],raf;const N=window.innerWidth<720?12:22;
+  function size(){dpr=Math.min(2,devicePixelRatio||1);w=c.width=innerWidth*dpr;h=c.height=innerHeight*dpr;c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';}
+  function seed(){parts=[];for(let i=0;i<N;i++){const r=(110+Math.random()*180)*dpr;parts.push({x:Math.random()*w,y:Math.random()*h,r,vx:(Math.random()-.5)*.1*dpr,vy:-(0.04+Math.random()*0.1)*dpr,a:0.008+Math.random()*0.012,ph:Math.random()*7});}}
+  function tick(t){x.clearRect(0,0,w,h);for(const p of parts){p.x+=p.vx+Math.sin(t*0.0002+p.ph)*0.08*dpr;p.y+=p.vy;if(p.y+p.r<0){p.y=h+p.r;p.x=Math.random()*w;}const g=x.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);g.addColorStop(0,`rgba(40,40,40,${p.a})`);g.addColorStop(1,'rgba(40,40,40,0)');x.fillStyle=g;x.beginPath();x.arc(p.x,p.y,p.r,0,7);x.fill();}raf=requestAnimationFrame(tick);}
+  function start(){cancelAnimationFrame(raf);size();seed();raf=requestAnimationFrame(tick);}
+  addEventListener('resize',()=>{clearTimeout(c._t);c._t=setTimeout(start,180)});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelAnimationFrame(raf);else raf=requestAnimationFrame(tick)});
+  if(!matchMedia('(prefers-reduced-motion:reduce)').matches)start();
+})();
+
+/* ============ reveals ============ */
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.18});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* ============ page transitions ============ */
+const curtain=document.getElementById('curtain');
+addEventListener('load',()=>requestAnimationFrame(()=>curtain.classList.add('gone')));
+document.querySelectorAll('[data-nav]').forEach(a=>{a.addEventListener('click',e=>{const href=a.getAttribute('href');if(!href||href.startsWith('#'))return;e.preventDefault();curtain.classList.remove('gone');curtain.classList.add('leaving');setTimeout(()=>location.href=href,560);});});
+
+/* ============ fix GLB material (Rhino export ships a black metal default) ============ */
+(function(){
+  const mv=document.getElementById('mv');if(!mv)return;
+  mv.addEventListener('load',()=>{
+    try{const m=mv.model.materials[0];
+      m.pbrMetallicRoughness.setBaseColorFactor([0.82,0.82,0.82,1]);
+      m.pbrMetallicRoughness.setMetallicFactor(0.05);
+      m.pbrMetallicRoughness.setRoughnessFactor(0.7);
+    }catch(e){}
+  });
+})();
+
+/* ============ THE INSTRUMENT ============ */
+(function(){
+  const stage=document.getElementById('stage');
+  const base=document.getElementById('baseimg');
+  const cv=document.getElementById('plume');
+  const cx=cv.getContext('2d');
+  const hint=document.getElementById('hint');
+  const roPad=document.getElementById('roPad'),roV1=document.getElementById('roV1'),roB1=document.getElementById('roB1');
+  const roV2=document.getElementById('roV2'),roB2=document.getElementById('roB2'),roArmed=document.getElementById('roArmed');
+
+  /* grid box in % of the image (tunable) */
+  const GX0=19.8, GX1=72.8, GY0=25.0, GY1=75.6, COLS=5, ROWS=4;
+  const ROWLET=['A','B','C','D'];
+
+  /* build hotspots */
+  const pads=[];
+  for(let r=0;r<ROWS;r++){
+    for(let col=0;col<COLS;col++){
+      const xp=GX0+(GX1-GX0)*(col/(COLS-1));
+      const yp=GY0+(GY1-GY0)*(r/(ROWS-1));
+      const label=ROWLET[r]+(col+1);
+      const b=document.createElement('button');
+      b.className='hot';b.style.left=xp+'%';b.style.top=yp+'%';
+      b.setAttribute('aria-label','향 웰 '+label);
+      b.innerHTML='<span class="ring"></span><span class="lbl mono">'+label+'</span>';
+      b.dataset.label=label;b.dataset.xp=xp;b.dataset.yp=yp;
+      stage.appendChild(b);
+      pads.push({el:b,label,xp,yp});
+    }
+  }
+
+  /* canvas sizing (DPR aware) */
+  let W,H,dpr;
+  function sizeCanvas(){dpr=Math.min(2,devicePixelRatio||1);const rect=stage.getBoundingClientRect();W=cv.width=rect.width*dpr;H=cv.height=rect.height*dpr;}
+  base.complete?sizeCanvas():base.addEventListener('load',sizeCanvas);
+  addEventListener('resize',()=>{clearTimeout(cv._t);cv._t=setTimeout(sizeCanvas,150)});
+
+  /* particles */
+  let smoke=[];
+  const MAX=460;
+  function emit(xp,yp,power){
+    const px=xp/100*W, py=yp/100*H;
+    const n=power;
+    for(let i=0;i<n;i++){
+      if(smoke.length>MAX)break;
+      const ang=-Math.PI/2+(Math.random()-.5)*0.5;
+      const sp=(0.55+Math.random()*1.15)*dpr;
+      smoke.push({x:px+(Math.random()-.5)*9*dpr,y:py,
+        vx:Math.cos(ang)*sp*0.45,vy:Math.sin(ang)*sp,
+        r:(4+Math.random()*7)*dpr,g:(0.045+Math.random()*0.05),life:0,max:70+Math.random()*70});
+    }
+  }
+  function loop(){
+    cx.clearRect(0,0,W,H);
+    for(let i=smoke.length-1;i>=0;i--){
+      const p=smoke[i];p.life++;
+      p.x+=p.vx;p.y+=p.vy;p.vy*=0.992;p.vx+=(Math.random()-.5)*0.05*dpr;p.r+=0.28*dpr;
+      const k=p.life/p.max;if(k>=1){smoke.splice(i,1);continue;}
+      const a=p.g*(1-k)*(k<0.15?k/0.15:1);
+      const g=cx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);
+      g.addColorStop(0,`rgba(26,26,26,${a})`);g.addColorStop(0.55,`rgba(26,26,26,${a*0.5})`);g.addColorStop(1,'rgba(26,26,26,0)');
+      cx.fillStyle=g;cx.beginPath();cx.arc(p.x,p.y,p.r,0,7);cx.fill();
+    }
+    /* continuous emit while hovering */
+    if(active){emit(active.xp,active.yp,4);}
+    raf=requestAnimationFrame(loop);
+  }
+  let raf=requestAnimationFrame(loop);
+
+  /* interaction */
+  let active=null, armed=null;
+  let intensity=0, targetIntensity=0;
+  pads.forEach(p=>{
+    p.el.addEventListener('mouseenter',()=>{active=p;targetIntensity=42+Math.random()*46;hint.style.opacity=0;roPad.textContent=p.label;roV2.textContent='RISING';emit(p.xp,p.yp,16);});
+    p.el.addEventListener('mouseleave',()=>{if(active===p){active=null;targetIntensity=0;roV2.textContent='IDLE';}});
+    p.el.addEventListener('click',()=>{
+      pads.forEach(q=>q.el.classList.remove('armed'));
+      p.el.classList.add('armed');armed=p.label;roArmed.innerHTML='<b>WELL '+p.label+'</b>';
+      emit(p.xp,p.yp,40);
+    });
+    /* touch */
+    p.el.addEventListener('touchstart',(e)=>{e.preventDefault();active=p;targetIntensity=60;roPad.textContent=p.label;emit(p.xp,p.yp,20);},{passive:false});
+    p.el.addEventListener('touchend',()=>{active=null;targetIntensity=0;});
+  });
+
+  /* readout animation */
+  function ui(){
+    intensity+=(targetIntensity-intensity)*0.12;
+    const v=Math.round(intensity);
+    roV1.textContent=v+'%';roB1.style.width=Math.max(4,v)+'%';
+    roB2.style.width=(active?70:12)+'%';
+    if(!active&&roPad.textContent!=='— —'&&intensity<1){roPad.textContent='— —';}
+    requestAnimationFrame(ui);
+  }
+  ui();
+})();
+</script>
+</body>
+</html>
